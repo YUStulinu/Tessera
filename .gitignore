@@ -1,0 +1,17 @@
+# Build output
+/build/
+/build-*/
+/out/
+CMakeUserPresets.json
+
+# Databases and logs created while trying things out
+*.tdb
+*.tdb-wal
+
+# Editors and OS
+.vscode/
+.idea/
+.vs/
+*.swp
+.DS_Store
+Thumbs.db

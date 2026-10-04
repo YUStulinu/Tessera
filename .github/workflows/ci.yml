@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.cc }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  cc: gcc }
+          - { os: ubuntu-latest,  cc: clang }
+          - { os: macos-latest,   cc: clang }
+          - { os: windows-latest, cc: msvc }
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ "${{ matrix.cc }}" = msvc ]; then
+            cmake -S . -B build
+          else
+            cmake -S . -B build -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_BUILD_TYPE=Release
+          fi
+
+      - name: Build (warnings are errors)
+        run: cmake --build build --config Release --parallel
+
+      # Unit tests (incl. thousands of simulated power losses), then the real
+      # crash test: a writer process killed mid-transaction 25 times.
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Crash test, more rounds
+        shell: bash
+        run: |
+          exe=build/tessera_crashtest
+          [ -f build/Release/tessera_crashtest.exe ] && exe=build/Release/tessera_crashtest.exe
+          "$exe" --rounds 100 --dir build
+          "$exe" --rounds 50 --dir build --sync normal
+
+  sanitizers:
+    name: ubuntu / ASan + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_BUILD_TYPE=Debug -DTESSERA_SANITIZE=ON
+          cmake --build build --parallel
+      - name: Test
+        run: |
+          build/tessera_tests
+          build/tessera_tests recovery --long
+          build/tessera_crashtest --rounds 40 --dir build
+
+  valgrind:
+    name: ubuntu / valgrind
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo apt-get update && sudo apt-get install -y valgrind
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build --parallel
+      - name: Memcheck
+        run: valgrind --error-exitcode=1 --leak-check=full --errors-for-leak-kinds=definite build/tessera_tests

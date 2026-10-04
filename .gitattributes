@@ -1,0 +1,3 @@
+# Normalize line endings in the repository; check out with the platform's default.
+* text=auto eol=lf
+*.bat text eol=crlf
